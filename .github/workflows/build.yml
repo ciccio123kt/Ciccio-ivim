@@ -1,0 +1,27 @@
+name: Build Ciccio IVIM
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --windowed --onefile --name "Ciccio IVIM" --add-data "ciccio_ivim.html;." main.py
+      - uses: actions/upload-artifact@v4
+        with: { name: Ciccio-IVIM-exe, path: "dist/Ciccio IVIM.exe" }
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --windowed --name "Ciccio IVIM" --add-data "ciccio_ivim.html:." main.py
+      - run: hdiutil create -volname "Ciccio IVIM" -srcfolder "dist/Ciccio IVIM.app" -ov -format UDZO "dist/Ciccio IVIM.dmg"
+      - uses: actions/upload-artifact@v4
+        with: { name: Ciccio-IVIM-dmg, path: "dist/Ciccio IVIM.dmg" }
