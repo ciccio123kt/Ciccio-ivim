@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ciccio IVIM</title>
+<style>
+:root{--bg:#f3f5f6;--pn:#fff;--ink:#16252b;--mu:#5d6f76;--ln:#d3dbde;--ac:#0e7c86;--ac2:#fff;--cv:#0b1214}
+@media (prefers-color-scheme:dark){:root{--bg:#0f171a;--pn:#172226;--ink:#e3eef1;--mu:#8ea3aa;--ln:#2a3a40;--ac:#3cc3cf;--ac2:#06191c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--ln);display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+h1{font-size:18px;margin:0;font-weight:650}
+header span{color:var(--mu);font-size:12.5px}
+main{display:grid;grid-template-columns:330px 1fr;gap:16px;padding:16px;max-width:1300px;margin:auto}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+section{background:var(--pn);border:1px solid var(--ln);border-radius:8px;padding:14px;margin-bottom:14px}
+h2{font-size:13.5px;margin:0 0 10px;font-weight:650}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;color:var(--mu)}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--ln);border-radius:6px;padding:5px 8px}
+input[type=number]{width:78px}
+input[type=range]{padding:0;width:100%}
+button{cursor:pointer}
+button.pri{background:var(--ac);color:var(--ac2);border-color:var(--ac);font-weight:600;width:100%;padding:9px}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+#drop{border:1.5px dashed var(--ln);border-radius:8px;padding:16px;text-align:center;color:var(--mu)}
+#drop.on{border-color:var(--ac);color:var(--ink)}
+#st{color:var(--mu);font-size:12.5px;min-height:18px;margin-top:8px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tabs button.on{background:var(--ac);color:var(--ac2);border-color:var(--ac)}
+.view{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+@media (max-width:1100px){.view{grid-template-columns:1fr}}
+#cvw{background:var(--cv);border-radius:6px;display:flex;justify-content:center;align-items:center;min-height:300px}
+canvas#cv{max-width:100%;max-height:70vh;image-rendering:pixelated;cursor:crosshair;aspect-ratio:auto}
+#bar{height:10px;border-radius:3px;margin:8px 0 2px;border:1px solid var(--ln)}
+#ro{font-size:12.5px;color:var(--mu);margin-top:8px;font-variant-numeric:tabular-nums}
+#cu{width:100%;height:auto;background:var(--bg);border-radius:6px;border:1px solid var(--ln)}
+.note{font-size:12px;color:var(--mu)}
+</style></head><body>
+<header><h1>Ciccio IVIM</h1><span>DICOM GE → mappe D, f, D*, f·D* · elaborazione locale nel browser · solo ricerca, non per uso clinico</span></header>
+<main>
+<div>
+<section><h2>1. Carica i DICOM</h2>
+<div id="drop">Trascina qui i file DICOM<br><span class="note">oppure usa i pulsanti</span>
+<div class="row" style="justify-content:center;margin-top:10px">
+<button id="bf">Scegli cartella</button><button id="bg">Scegli file</button></div></div>
+<input type="file" id="fd" webkitdirectory multiple hidden><input type="file" id="ff" multiple hidden>
+<div id="st">Nessun file caricato.</div>
+<label>Serie<select id="ser" style="max-width:200px"></select></label>
+<div class="note" id="info"></div></section>
+<section><h2>2. Parametri del fit</h2>
+<label>Distretto<select id="reg"><option value="testa">Testa</option><option value="collo">Collo</option><option value="prostata">Prostata</option></select></label>
+<label>D max (10⁻³ mm²/s)<input type="number" id="dmax" step="0.1"></label>
+<label>f min / max<span><input type="number" id="fmin" step="0.05" style="width:60px"> <input type="number" id="fmax" step="0.05" style="width:60px"></span></label>
+<label>D* min / max (10⁻³)<span><input type="number" id="smin" step="1" style="width:60px"> <input type="number" id="smax" step="5" style="width:60px"></span></label>
+<label>b minimo per D (s/mm²)<input type="number" id="bthr" value="200" step="50"></label>
+<label>Soglia maschera (% di S0)<input type="number" id="mask" value="8" step="1"></label>
+<label>Metodo<select id="mode"><option value="fast">Rapido (segmentato)</option><option value="acc">Accurato (griglia f·D*)</option></select></label>
+<div class="note" style="margin-bottom:10px">I limiti sono valori indicativi di partenza: adattali al tuo protocollo.</div>
+<button class="pri" id="go" disabled>Calcola mappe</button></section>
+<section><h2>3. Esporta</h2><div class="row">
+<button id="png" disabled>Mappa PNG</button><button id="csv" disabled>Statistiche CSV</button></div></section>
+</div>
+<div><section>
+<div class="tabs" id="tabs"></div>
+<div class="view">
+<div><div id="cvw"><canvas id="cv" width="256" height="256"></canvas></div>
+<label>Taglio <span id="sln">–</span></label><input type="range" id="sl" min="0" max="0" value="0">
+<div id="bar"></div><div class="row" style="justify-content:space-between;align-items:center">
+<input type="number" id="vmin" step="any"><span class="note" id="un"></span><input type="number" id="vmax" step="any"></div></div>
+<div><div class="note" style="margin-bottom:6px">Passa il mouse sull'immagine per vedere la curva del voxel.</div>
+<canvas id="cu" width="300" height="190"></canvas><div id="ro">–</div></div>
+</div></section></div>
+</main>
+<script>
+const $=id=>document.getElementById(id),tick=()=>new Promise(r=>setTimeout(r));
+const PRE={testa:{d:3,a:0,b:.3,s:4,t:100},collo:{d:3,a:0,b:.5,s:4,t:200},prostata:{d:3,a:0,b:.4,s:4,t:200}};
+const MAPS={S0:{n:'S0',sc:1,r:[0,1],u:'u.a.',g:1},D:{n:'D',sc:1e3,r:[0,3],u:'10⁻³ mm²/s'},f:{n:'f',sc:1,r:[0,.4],u:'frazione'},
+Ds:{n:'D*',sc:1e3,r:[0,100],u:'10⁻³ mm²/s'},fDs:{n:'f·D*',sc:1e3,r:[0,10],u:'10⁻³ mm²/s'},R2:{n:'R²',sc:1,r:[0,1],u:''}};
+const STOPS=[[25,25,100],[30,110,185],[45,175,150],[240,215,60],[220,60,40]];
+let series={},vol=null,maps=[],sl=0,cur='D';
+const st=t=>$('st').textContent=t;
+
+/* ---- lettura DICOM (VR esplicito/implicito little endian, non compresso) ---- */
+function readDicom(buf){
+ const dv=new DataView(buf),t={},L=buf.byteLength;
+ let p=String.fromCharCode(...new Uint8Array(buf,128,4))==='DICM'?132:0,ts='1.2.840.10008.1.2.1';
+ const S=g=>{const e=t[g];return e?new TextDecoder().decode(new Uint8Array(buf,e.o,e.l)).replace(/[\0 ]+$/,'').trim():''};
+ const LONG=['OB','OW','OF','SQ','UT','UN','OD','OL','UC','UR'];
+ while(p+8<=L){
+  const g=dv.getUint16(p,true),e=dv.getUint16(p+2,true);
+  if(g===0xFFFE){p+=8;continue}
+  const tag=((g<<16)|e)>>>0,ex=g===2||ts!=='1.2.840.10008.1.2';
+  let vr='',len,h;
+  if(ex){vr=String.fromCharCode(dv.getUint8(p+4),dv.getUint8(p+5));if(LONG.includes(vr)){len=dv.getUint32(p+8,true);h=12}else{len=dv.getUint16(p+6,true);h=8}}
+  else{len=dv.getUint32(p+4,true);h=8}
+  const un=len===0xFFFFFFFF;
+  if(!(tag in t))t[tag]={o:p+h,l:un?0:len};
+  if(tag===0x00020010)ts=S(tag);
+  if(tag===0x7FE00010)break;
+  p+=(un||vr==='SQ')?h:h+len;
+ }
+ if(!t[0x7FE00010])return null;
+ if(!/^1\.2\.840\.10008\.1\.2(\.1)?$/.test(ts))return 'comp';
+ const W=dv.getUint16(t[0x00280011].o,true),H=dv.getUint16(t[0x00280010].o,true);
+ const ba=dv.getUint16(t[0x00280100].o,true),pr=t[0x00280103]?dv.getUint16(t[0x00280103].o,true):0;
+ let b=NaN;
+ if(t[0x00189087]&&t[0x00189087].l>=8)b=dv.getFloat64(t[0x00189087].o,true);
+ if(!isFinite(b)&&t[0x00431039]){const n=parseFloat(S(0x00431039).split('\\')[0]);if(isFinite(n))b=n%100000}
+ if(!isFinite(b)&&t[0x20011003]&&t[0x20011003].l>=4)b=dv.getFloat32(t[0x20011003].o,true);
+ if(!isFinite(b)&&t[0x0019100C]){const n=parseFloat(S(0x0019100C));if(isFinite(n))b=n}
+ if(!isFinite(b))return null;
+ const pp=S(0x00200032).split('\\').map(Number),io=S(0x00200037).split('\\').map(Number);
+ let z=pp[2]||0;
+ if(pp.length===3&&io.length===6){const n=[io[1]*io[5]-io[2]*io[4],io[2]*io[3]-io[0]*io[5],io[0]*io[4]-io[1]*io[3]];z=pp[0]*n[0]+pp[1]*n[1]+pp[2]*n[2]}
+ const sl_=parseFloat(S(0x00281053))||1,ic=parseFloat(S(0x00281052))||0,po=t[0x7FE00010].o,N=W*H;
+ let raw;
+ if(ba===16)raw=pr?new Int16Array(buf.slice(po,po+N*2)):new Uint16Array(buf.slice(po,po+N*2));
+ else if(ba===8)raw=new Uint8Array(buf.slice(po,po+N));else return null;
+ const px=new Float32Array(N);for(let i=0;i<N;i++)px[i]=raw[i]*sl_+ic;
+ return{uid:S(0x0020000E),desc:S(0x0008103E),W,H,b,z,zk:Math.round(z*10),px};
+}
+async function load(files){
+ series={};let n=0,comp=0;
+ for(const f of files){
+  try{const r=readDicom(await f.arrayBuffer());
+   if(r==='comp'){comp++}
+   else if(r){(series[r.uid]=series[r.uid]||{desc:r.desc,W:r.W,H:r.H,it:[]}).it.push(r)}}catch(e){}
+  if(++n%40===0){st(`Lettura ${n}/${files.length}…`);await tick()}
+ }
+ const sel=$('ser');sel.innerHTML='';
+ const list=Object.entries(series).map(([k,s])=>[k,s,new Set(s.it.map(r=>Math.round(r.b))).size]).filter(x=>x[2]>=3).sort((a,b)=>b[2]-a[2]);
+ list.forEach(([k,s,nb])=>sel.add(new Option(`${s.desc||'serie'} · ${nb} b · ${s.it.length} img`,k)));
+ if(!list.length){st(comp?'Immagini compresse (JPEG): esportale non compresse dal PACS.':'Nessuna serie di diffusione con almeno 3 b-value trovata.');return}
+ st(`${files.length} file letti.`+(comp?` ${comp} compressi ignorati.`:''));
+ pick();
+}
+function pick(){
+ const s=series[$('ser').value];if(!s)return;
+ const bs=[...new Set(s.it.map(r=>Math.round(r.b)))].sort((a,b)=>a-b),zm=new Map(),N=s.W*s.H;
+ for(const r of s.it){
+  if(r.W!==s.W||r.H!==s.H)continue;
+  let e=zm.get(r.zk);if(!e)zm.set(r.zk,e={z:r.z,a:{}});
+  const k=Math.round(r.b),q=e.a[k]||(e.a[k]={s:new Float32Array(N),n:0});
+  for(let i=0;i<N;i++)q.s[i]+=r.px[i];q.n++;
+ }
+ const zs=[...zm.values()].sort((a,b)=>a.z-b.z).filter(e=>bs.every(b=>e.a[b]));
+ const data=zs.map(e=>bs.map(b=>{const q=e.a[b];for(let i=0;i<N;i++)q.s[i]/=q.n;return q.s}));
+ if(!data.length){st('Nessun taglio completo per tutti i b-value.');return}
+ const smp=[];data.forEach(d=>{for(let i=0;i<N;i+=7)smp.push(d[0][i])});smp.sort((a,b)=>a-b);
+ vol={bs,W:s.W,H:s.H,Z:data.length,data,max:smp[Math.floor(smp.length*.99)]||1};
+ maps=[];sl=0;MAPS.S0.r=[0,Math.round(vol.max*.8)];
+ $('sl').max=vol.Z-1;$('sl').value=0;$('go').disabled=false;
+ $('info').textContent=`b-value: ${bs.join(', ')} s/mm² · ${vol.Z} tagli · ${s.W}×${s.H}`+(bs[0]>0?' · attenzione: manca b=0, S0 è riferito al b minimo':'');
+ $('png').disabled=$('csv').disabled=true;setMap('S0');
+}
+
+/* ---- fit IVIM ---- */
+const params=()=>({D1:+$('dmax').value/1e3,f0:+$('fmin').value,f1:+$('fmax').value,s0:+$('smin').value/1e3,s1:+$('smax').value/1e3,bthr:+$('bthr').value,mask:+$('mask').value/100,acc:$('mode').value==='acc'});
+function fitSlice(z,P){
+ const{bs,W,H,data}=vol,nb=bs.length,N=W*H,d=data[z],b0=d[0],thr=P.mask*vol.max,o={};
+ for(const k in MAPS)o[k]=new Float32Array(N).fill(NaN);
+ const hi=[];bs.forEach((b,k)=>{if(b>=P.bthr)hi.push(k)});
+ const G=P.acc?28:40,E=[],dv=[];
+ for(let j=0;j<G;j++){const x=P.s0*Math.pow(P.s1/P.s0,j/(G-1));dv.push(x);E.push(bs.map(b=>Math.exp(-b*x)))}
+ const S=new Float64Array(nb),eD=new Float64Array(nb),tmp=new Float64Array(nb);
+ const sse=(f,Ek)=>{let s=0;for(let k=0;k<nb;k++){const r=S[k]-eD[k]*(1-f+f*Ek[k]);s+=r*r}return s};
+ for(let i=0;i<N;i++){
+  const s0=b0[i];if(!(s0>thr))continue;
+  for(let k=0;k<nb;k++)S[k]=d[k][i]/s0;
+  let sx=0,sy=0,sxx=0,sxy=0;const n=hi.length;
+  for(const k of hi){const y=Math.log(Math.max(S[k],1e-4));sx+=bs[k];sy+=y;sxx+=bs[k]*bs[k];sxy+=bs[k]*y}
+  const den=n*sxx-sx*sx;if(n<2||den===0)continue;
+  let D=-(n*sxy-sx*sy)/den;D=Math.min(Math.max(D,0),P.D1);
+  let f=1-Math.exp((sy+D*sx)/n);f=Math.min(Math.max(f,P.f0),P.f1);
+  for(let k=0;k<nb;k++)eD[k]=Math.exp(-bs[k]*D);
+  let bj=0,bf=f,be=Infinity;
+  if(!P.acc){for(let j=0;j<G;j++){const e=sse(f,E[j]);if(e<be){be=e;bj=j}}}
+  else{for(let a=0;a<=15;a++){const ff=P.f0+(P.f1-P.f0)*a/15;for(let j=0;j<G;j++){const e=sse(ff,E[j]);if(e<be){be=e;bj=j;bf=ff}}}}
+  let Ds=dv[bj];
+  if(P.acc){
+   const df=(P.f1-P.f0)/15,lo=dv[Math.max(bj-1,0)],up=dv[Math.min(bj+1,G-1)];let bs2=Ds,bf2=bf;
+   for(let a=-3;a<=3;a++)for(let c=0;c<=6;c++){
+    const ff=Math.min(Math.max(bf+df*a/3,P.f0),P.f1),x=lo+(up-lo)*c/6;
+    for(let k=0;k<nb;k++)tmp[k]=Math.exp(-bs[k]*x);
+    const e=sse(ff,tmp);if(e<be){be=e;bs2=x;bf2=ff}
+   }
+   Ds=bs2;bf=bf2;
+  }
+  let m=0;for(let k=0;k<nb;k++)m+=S[k];m/=nb;let sst=0;for(let k=0;k<nb;k++)sst+=(S[k]-m)*(S[k]-m);
+  o.S0[i]=s0;o.D[i]=D;o.f[i]=bf;o.R2[i]=sst>0?1-be/sst:NaN;
+  if(bf>.002){o.Ds[i]=Ds;o.fDs[i]=bf*Ds}
+ }
+ return o;
+}
+async function runAll(){
+ const P=params();$('go').disabled=true;maps=[];const t0=performance.now();
+ for(let z=0;z<vol.Z;z++){
+  maps[z]=fitSlice(z,P);st(`Calcolo taglio ${z+1}/${vol.Z}…`);
+  if(z===0||z===sl)render();await tick();
+ }
+ $('go').disabled=false;$('png').disabled=$('csv').disabled=false;
+ st(`Fatto in ${((performance.now()-t0)/1000).toFixed(1)} s.`);setMap(cur==='S0'?'D':cur);
+}
+
+/* ---- visualizzazione ---- */
+function cmap(t){t=Math.min(Math.max(t,0),1)*(STOPS.length-1);const i=Math.min(Math.floor(t),STOPS.length-2),u=t-i,a=STOPS[i],b=STOPS[i+1];return[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u]}
+function setMap(k){
+ cur=k;const M=MAPS[k];
+ $('tabs').innerHTML='';
+ for(const q in MAPS){const b=document.createElement('button');b.textContent=MAPS[q].n;if(q===k)b.className='on';b.onclick=()=>setMap(q);$('tabs').appendChild(b)}
+ $('vmin').value=+(M.r[0]*M.sc).toPrecision(4);$('vmax').value=+(M.r[1]*M.sc).toPrecision(4);
+ $('un').textContent=M.u;
+ const c=document.createElement('canvas');c.width=64;c.height=1;const g=c.getContext('2d'),im=g.createImageData(64,1);
+ for(let i=0;i<64;i++){const v=M.g?[i*4,i*4,i*4]:cmap(i/63);im.data.set([...v,255],i*4)}
+ g.putImageData(im,0,0);$('bar').style.background=`url(${c.toDataURL()}) 0 0/100% 100%`;
+ render();
+}
+function readRange(){const M=MAPS[cur];M.r=[+$('vmin').value/M.sc,+$('vmax').value/M.sc]}
+function render(){
+ if(!vol)return;
+ const{W,H}=vol,c=$('cv');c.width=W;c.height=H;
+ const g=c.getContext('2d'),im=g.createImageData(W,H),b0=vol.data[sl][0],m=maps[sl]&&maps[sl][cur],M=MAPS[cur];
+ const lo=M.r[0],sp=(M.r[1]-M.r[0])||1;
+ for(let i=0;i<W*H;i++){
+  const base=255*Math.min(1,b0[i]/(vol.max*.8));let r,gg,b,v=m?m[i]:NaN;
+  if(isFinite(v)){const t=(v-lo)/sp;if(M.g){r=gg=b=Math.min(Math.max(t,0),1)*255}else[r,gg,b]=cmap(t)}
+  else{r=gg=b=m||!maps.length?base*(maps.length?.35:1):base}
+  im.data.set([r,gg,b,255],i*4);
+ }
+ g.putImageData(im,0,0);$('sln').textContent=`${sl+1} / ${vol.Z}`;
+}
+function curve(x,y){
+ const{W,bs}=vol,i=y*W+x,m=maps[sl],c=$('cu'),g=c.getContext('2d'),cs=getComputedStyle(document.documentElement);
+ g.clearRect(0,0,300,190);
+ const s0=vol.data[sl][0][i],pts=bs.map((b,k)=>vol.data[sl][k][i]/s0),bm=bs[bs.length-1]||1;
+ const X=b=>30+b/bm*255,Y=v=>170-Math.min(Math.max(v,0),1.1)/1.1*155;
+ g.strokeStyle=cs.getPropertyValue('--ln');g.fillStyle=cs.getPropertyValue('--mu');g.font='10px system-ui';
+ g.beginPath();g.moveTo(30,10);g.lineTo(30,170);g.lineTo(290,170);g.stroke();
+ g.fillText('1',16,Y(1)+3);g.fillText('0',16,172);g.fillText(bm+' s/mm²',250,184);
+ const ac=cs.getPropertyValue('--ac');
+ if(m&&isFinite(m.D[i])){
+  const D=m.D[i],f=m.f[i],Ds=isFinite(m.Ds[i])?m.Ds[i]:0;
+  g.strokeStyle=ac;g.lineWidth=1.8;g.beginPath();
+  for(let b=0;b<=bm;b+=bm/120){const v=(1-f)*Math.exp(-b*D)+f*Math.exp(-b*(D+Ds));b?g.lineTo(X(b),Y(v)):g.moveTo(X(b),Y(v))}
+  g.stroke();g.lineWidth=1;
+ }
+ g.fillStyle=cs.getPropertyValue('--ink');
+ pts.forEach((v,k)=>{g.beginPath();g.arc(X(bs[k]),Y(v),3,0,7);g.fill()});
+ const fm=(k,s,d)=>m&&isFinite(m[k][i])?(m[k][i]*s).toFixed(d):'–';
+ $('ro').textContent=m&&isFinite(m.D[i])?`x ${x}, y ${y} · D ${fm('D',1e3,3)} · f ${fm('f',1,3)} · D* ${fm('Ds',1e3,1)} · f·D* ${fm('fDs',1e3,2)} (×10⁻³) · R² ${fm('R2',1,2)}`:`x ${x}, y ${y} · ${m?'fuori maschera':'calcola le mappe per vedere il fit'}`;
+}
+
+/* ---- esportazione ---- */
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove()}
+function csv(){
+ let out='mappa;unita;media;mediana;dev_std;n_voxel\n';
+ for(const k of ['D','f','Ds','fDs','R2']){
+  const v=[];maps.forEach(m=>{if(m)for(let i=0;i<m[k].length;i++)if(isFinite(m[k][i]))v.push(m[k][i])});
+  if(!v.length)continue;v.sort((a,b)=>a-b);
+  const mean=v.reduce((a,b)=>a+b,0)/v.length,sd=Math.sqrt(v.reduce((a,b)=>a+(b-mean)**2,0)/v.length),med=v[v.length>>1];
+  out+=[MAPS[k].n,k==='f'||k==='R2'?'':'mm2/s',mean,med,sd,v.length].map(x=>typeof x==='number'?String(+x.toPrecision(6)).replace('.',','):x).join(';')+'\n';
+ }
+ dl(new Blob(['\ufeff'+out],{type:'text/csv'}),'ivim_statistiche.csv');
+}
+
+/* ---- eventi ---- */
+function applyPreset(){const p=PRE[$('reg').value];$('dmax').value=p.d;$('fmin').value=p.a;$('fmax').value=p.b;$('smin').value=p.s;$('smax').value=p.t}
+$('reg').onchange=applyPreset;applyPreset();
+$('bf').onclick=()=>$('fd').click();$('bg').onclick=()=>$('ff').click();
+$('fd').onchange=e=>load([...e.target.files]);$('ff').onchange=e=>load([...e.target.files]);
+const dz=$('drop');
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('on')};dz.ondragleave=()=>dz.classList.remove('on');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('on');load([...e.dataTransfer.files])};
+$('ser').onchange=pick;$('go').onclick=runAll;
+$('sl').oninput=e=>{sl=+e.target.value;render()};
+$('vmin').oninput=$('vmax').oninput=()=>{readRange();render()};
+$('png').onclick=()=>$('cv').toBlob(b=>dl(b,`ivim_${cur}_taglio${sl+1}.png`));
+$('csv').onclick=csv;
+$('cv').onpointermove=e=>{if(!vol)return;const r=e.target.getBoundingClientRect();
+ const x=Math.min(vol.W-1,Math.max(0,Math.floor((e.clientX-r.left)/r.width*vol.W))),y=Math.min(vol.H-1,Math.max(0,Math.floor((e.clientY-r.top)/r.height*vol.H)));curve(x,y)};
+setMap('D');
+</script></body></html>
